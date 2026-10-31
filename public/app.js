@@ -132,6 +132,19 @@ function renderPortfolio(summary) {
   $('sumProfit').className = pClass;
   $('sumProfit').textContent = `${sign}${won(profit)} (${sign}${rate.toFixed(2)}%)`;
 
+  // 상단 바 총 평가자산(순자산 = 잔고 + 주식평가금) & 실시간 평가손익 갱신
+  const netWorth = (Number(balance) || 0) + Number(summary?.totalEvaluation || 0);
+  if ($('myNetWorthDisplay')) $('myNetWorthDisplay').textContent = won(netWorth);
+  if ($('myBalanceDisplay')) $('myBalanceDisplay').textContent = won(balance);
+  if ($('myTotalProfitDisplay')) {
+    $('myTotalProfitDisplay').className = pClass;
+    $('myTotalProfitDisplay').textContent = `${sign}${won(profit)}`;
+  }
+  if ($('myProfitRateBadge')) {
+    $('myProfitRateBadge').className = `stock-pill ${pClass}`;
+    $('myProfitRateBadge').textContent = `${sign}${rate.toFixed(2)}%`;
+  }
+
   const tbody = $('portfolioTableBody');
   if (!portfolio.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty-cell">보유 중인 주식이 없습니다. 좌측에서 종목을 선택해 투자해 보세요!</td></tr>';
@@ -154,7 +167,7 @@ function renderPortfolio(summary) {
         </td>
         <td><b>${Number(h.shares).toLocaleString()}</b>주</td>
         <td>${won(h.avg_buy_price)}</td>
-        <td>${won(h.current_price)}</td>
+        <td class="${cls}">${won(h.current_price)}</td>
         <td style="font-weight:700;">${won(h.current_eval)}</td>
         <td class="${cls}">${sSign}${won(pAmt)}</td>
         <td class="${cls}">${sSign}${pRate.toFixed(2)}%</td>
@@ -164,6 +177,37 @@ function renderPortfolio(summary) {
       </tr>
     `;
   }).join('');
+}
+
+// 1초마다 실시간 주가 변동을 내 포트폴리오에 0ms 즉시 동기화
+function syncLivePortfolio() {
+  if (!portfolio || !portfolio.length) return;
+  let totalInvested = 0;
+  let totalEvaluation = 0;
+
+  portfolio.forEach(h => {
+    const s = stocks.find(item => item.id === h.stock_id);
+    if (s) {
+      h.current_price = s.current_price;
+      h.current_eval = h.shares * s.current_price;
+      h.profit_amount = h.current_eval - h.total_invested;
+      h.profit_rate = h.total_invested > 0 
+        ? Number(((h.profit_amount / h.total_invested) * 100).toFixed(2)) 
+        : 0;
+    }
+    totalInvested += Number(h.total_invested || 0);
+    totalEvaluation += Number(h.current_eval || 0);
+  });
+
+  const totalProfit = totalEvaluation - totalInvested;
+  const profitRate = totalInvested > 0 ? Number(((totalProfit / totalInvested) * 100).toFixed(2)) : 0;
+
+  renderPortfolio({
+    totalInvested,
+    totalEvaluation,
+    totalProfit,
+    profitRate
+  });
 }
 
 // ---------- 주식 목록 로드 및 렌더링 ----------
@@ -181,6 +225,7 @@ async function reloadStocks(isFirst = false) {
 
     renderStockList();
     renderTickerBar();
+    syncLivePortfolio();
 
     // 현재 선택된 종목 정보 갱신
     const current = stocks.find(s => s.id === selectedStockId) || stocks[0];
