@@ -252,6 +252,8 @@ async function loadStockDetail(stockId) {
     if (res.stock) {
       selectedStock = res.stock;
       candleHistory = res.history || [];
+      chartScrollOffset = 0;
+      if (typeof updateResetBtnVisibility === 'function') updateResetBtnVisibility();
       renderSelectedStockHeader(res.stock);
       renderOrderBook(res.stock);
       drawCandleChart();
@@ -434,6 +436,19 @@ let canvas, ctx;
 let chartWidth = 800, chartHeight = 380;
 let crosshair = null; // { x, y }
 
+let chartScrollOffset = 0; // 0 = 최신봉에 고정, >0 = 과거로 스크롤
+let visibleCandleCount = 40; // 한 화면에 표시할 캔들 개수 (줌인/줌아웃 조절 가능)
+let isDraggingChart = false;
+let dragStartX = 0;
+let dragStartOffset = 0;
+
+function updateResetBtnVisibility() {
+  const btn = $('resetChartScrollBtn');
+  if (btn) {
+    btn.style.display = chartScrollOffset > 0 ? 'inline-flex' : 'none';
+  }
+}
+
 function initCanvas() {
   canvas = $('candleChart');
   ctx = canvas.getContext('2d');
@@ -452,19 +467,80 @@ function initCanvas() {
   window.addEventListener('resize', resize);
   setTimeout(resize, 100);
 
-  canvas.addEventListener('mousemove', e => {
+  // 마우스 좌클릭 드래그로 과거 시세 스크롤
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    isDraggingChart = true;
+    dragStartX = e.clientX;
+    dragStartOffset = chartScrollOffset;
+    canvas.style.cursor = 'grabbing';
+    crosshair = null;
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (isDraggingChart) {
+      const paddingRight = 65;
+      const plotW = Math.max(100, chartWidth - paddingRight);
+      const candleSlot = plotW / Math.max(visibleCandleCount, 15);
+      const deltaX = e.clientX - dragStartX;
+      const deltaCandles = Math.round(deltaX / Math.max(1, candleSlot));
+      const maxOffset = Math.max(0, candleHistory.length - visibleCandleCount);
+      chartScrollOffset = Math.max(0, Math.min(maxOffset, dragStartOffset + deltaCandles));
+      updateResetBtnVisibility();
+      drawCandleChart();
+      return;
+    }
+
     const rect = canvas.getBoundingClientRect();
-    crosshair = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
-    drawCandleChart();
+    if (
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom
+    ) {
+      crosshair = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+      drawCandleChart();
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isDraggingChart) {
+      isDraggingChart = false;
+      canvas.style.cursor = 'grab';
+    }
   });
 
   canvas.addEventListener('mouseleave', () => {
-    crosshair = null;
-    drawCandleChart();
+    if (!isDraggingChart) {
+      crosshair = null;
+      drawCandleChart();
+    }
   });
+
+  // 마우스 휠로 줌인 / 줌아웃 (캔들 확대 및 축소)
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const zoomStep = e.deltaY > 0 ? 3 : -3;
+    const maxZoomOut = Math.min(120, Math.max(candleHistory.length, 30));
+    visibleCandleCount = Math.max(15, Math.min(maxZoomOut, visibleCandleCount + zoomStep));
+    const maxOffset = Math.max(0, candleHistory.length - visibleCandleCount);
+    chartScrollOffset = Math.max(0, Math.min(maxOffset, chartScrollOffset));
+    updateResetBtnVisibility();
+    drawCandleChart();
+  }, { passive: false });
+
+  // 최신 시세 복귀 버튼 클릭 핸들러
+  const resetBtn = $('resetChartScrollBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      chartScrollOffset = 0;
+      updateResetBtnVisibility();
+      drawCandleChart();
+    });
+  }
 }
 
 function updateCurrentCandle(currentPrice) {
@@ -485,26 +561,34 @@ function drawCandleChart() {
 
   // 차트 마진
   const paddingRight = 65;
-  const paddingBottom = 40;
-  const plotW = w - paddingRight;
-  const plotH = h - paddingBottom;
+  const paddingBottom = 32;
+  const plotW = Math.max(50, w - paddingRight);
+  const plotH = Math.max(50, h - paddingBottom);
   const volH = plotH * 0.22; // 볼륨 바 높이
   const mainH = plotH - volH;
 
-  // 가격 최소/최대 계산
+  // 표시할 캔들 윈도우 슬라이스 계산 (스크롤 & 줌 적용)
+  const totalCount = candleHistory.length;
+  const maxOffset = Math.max(0, totalCount - visibleCandleCount);
+  chartScrollOffset = Math.max(0, Math.min(maxOffset, chartScrollOffset));
+
+  const endIndex = totalCount - chartScrollOffset;
+  const startIndex = Math.max(0, endIndex - visibleCandleCount);
+  const visibleCandles = candleHistory.slice(startIndex, endIndex);
+
+  if (!visibleCandles.length) return;
+
+  // 현재 화면에 보이는 캔들 기준 가격 최소/최대 및 볼륨 계산
   let rawMin = Infinity;
   let rawMax = -Infinity;
   let maxVol = 1;
 
-  const count = candleHistory.length;
-  candleHistory.forEach(c => {
+  visibleCandles.forEach(c => {
     if (c.low < rawMin) rawMin = c.low;
     if (c.high > rawMax) rawMax = c.high;
     if (c.volume > maxVol) maxVol = c.volume;
   });
 
-  // 최소 수직 여유 공간(Headroom): 현재 주가의 최소 12% (상하 ±6%) 폭을 항상 보장
-  // 가격이 1원/1틱만 올라도 화면 위아래로 꽉 차는 현상 완전 방지
   const curPrice = selectedStock?.current_price || ((rawMin + rawMax) / 2) || 1000;
   const minHeadroom = Math.max(20, Math.round(curPrice * 0.12));
   let priceDiff = rawMax - rawMin;
@@ -542,10 +626,10 @@ function drawCandleChart() {
   }
 
   // 2. 캔들스틱 및 볼륨 바 그리기
-  // 캔들이 적을 때 거대해지지 않도록 최대폭(18px)으로 캡하고 우측 정렬 (TradingView / 업비트 방식)
-  const minCandlesScale = 35; // 기본 35개 기준 그리드 슬롯
-  const candleGap = 3;
-  const candleSlot = Math.min(18, Math.max(5, plotW / Math.max(count, minCandlesScale)));
+  const count = visibleCandles.length;
+  // 캔들 슬롯 폭: 가로 영역을 균등 분할하되 얇은 바늘이 되지 않도록 넉넉한 두께 유지
+  const candleSlot = plotW / Math.max(count, Math.min(visibleCandleCount, 30));
+  const candleGap = Math.max(2, Math.round(candleSlot * 0.22));
   const candleWidth = Math.max(2, candleSlot - candleGap);
 
   // 차트 우측 정렬 (캔들이 적으면 우측부터 최신순으로 정렬)
@@ -554,7 +638,7 @@ function drawCandleChart() {
 
   let hoveredCandle = null;
 
-  candleHistory.forEach((c, idx) => {
+  visibleCandles.forEach((c, idx) => {
     const x = startX + idx * candleSlot + candleWidth / 2;
     const isUp = c.close >= c.open;
     const color = isUp ? '#EF4444' : '#3B82F6';
@@ -591,7 +675,50 @@ function drawCandleChart() {
     }
   });
 
-  // 3. 십자선(Crosshair) 및 툴팁
+  // 3. 시간 축 눈금 라벨
+  ctx.fillStyle = '#64748B';
+  ctx.font = '9px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  const timeStep = Math.max(1, Math.floor(count / 5));
+  visibleCandles.forEach((c, idx) => {
+    if (idx % timeStep === 0 || idx === count - 1) {
+      const x = startX + idx * candleSlot + candleWidth / 2;
+      let timeStr = '';
+      if (c.at) {
+        const d = new Date(c.at);
+        if (!isNaN(d.getTime())) {
+          timeStr = d.toTimeString().split(' ')[0];
+        }
+      }
+      if (timeStr && x < plotW - 15 && x > 25) {
+        ctx.fillText(timeStr, x, plotH + 16);
+      }
+    }
+  });
+
+  // 4. 실시간 현재가 수평 점선 및 가격 태그
+  if (selectedStock && count > 0) {
+    const curP = selectedStock.current_price;
+    const curY = mainH - ((curP - minPrice) / priceRange) * mainH;
+    if (curY >= 0 && curY <= mainH) {
+      ctx.strokeStyle = (selectedStock.change_amount || 0) >= 0 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(59, 130, 246, 0.8)';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, curY);
+      ctx.lineTo(plotW, curY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = (selectedStock.change_amount || 0) >= 0 ? '#EF4444' : '#3B82F6';
+      ctx.fillRect(plotW + 2, curY - 9, 60, 18);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 9px JetBrains Mono, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(won(curP), plotW + 5, curY + 4);
+    }
+  }
+
+  // 5. 십자선(Crosshair) 및 툴팁
   if (crosshair && hoveredCandle) {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.setLineDash([3, 3]);
@@ -615,17 +742,18 @@ function drawCandleChart() {
     ctx.fillStyle = '#222C42';
     ctx.fillRect(plotW + 2, crosshair.y - 9, 60, 18);
     ctx.fillStyle = '#00F0FF';
+    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.textAlign = 'left';
     ctx.fillText(won(cursorPrice), plotW + 6, crosshair.y + 4);
 
     // 툴팁 박스 (상단 좌측)
     ctx.fillStyle = 'rgba(18, 23, 34, 0.9)';
     ctx.strokeStyle = '#26334A';
-    ctx.fillRect(10, 10, 260, 26);
-    ctx.strokeRect(10, 10, 260, 26);
+    ctx.fillRect(10, 10, 280, 26);
+    ctx.strokeRect(10, 10, 280, 26);
 
     ctx.fillStyle = '#F1F5F9';
     ctx.font = '10px JetBrains Mono, monospace';
-    const isUp = hoveredCandle.close >= hoveredCandle.open;
     ctx.fillText(`시:${won(hoveredCandle.open)} 고:${won(hoveredCandle.high)} 저:${won(hoveredCandle.low)} 종:${won(hoveredCandle.close)}`, 16, 26);
   }
 }

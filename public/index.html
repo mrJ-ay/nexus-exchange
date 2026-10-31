@@ -141,8 +141,14 @@
       <!-- 인터랙티브 캔들 차트 캔버스 -->
       <div class="chart-canvas-container">
         <div class="chart-toolbar">
-          <span class="chart-title">📈 1분봉 실시간 캔들 차트</span>
-          <div class="chart-time-badge">2.5초 틱 자동 갱신 중 ●</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="chart-title">📈 실시간 캔들 차트</span>
+            <span class="chart-hint-pill">🖱️ 마우스 좌클릭 드래그: 과거 시세 스크롤 · 휠: 줌인/아웃</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn-reset-view" id="resetChartScrollBtn" style="display:none;" title="최신 실시간 시세로 스크롤 복귀">⏩ 최신 시세 복귀</button>
+            <div class="chart-time-badge">1초 틱 갱신 중 ●</div>
+          </div>
         </div>
         <canvas id="candleChart" width="800" height="380"></canvas>
       </div>
