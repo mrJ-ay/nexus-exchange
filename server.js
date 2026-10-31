@@ -23,10 +23,12 @@ const JARKET_URL = (process.env.JARKET_URL || 'https://jarket.onrender.com').rep
 
 await initSchema();
 
-// 실시간 2.5초 주가 변동 및 캔들 생성 루프
+// 실시간 1.0초 쾌속 틱 엔진 (코인은 매초 ±3~8% 급등락, 일반주는 2초마다 안정적 파동)
+let tickCounter = 0;
 setInterval(() => {
-  tickMarket().catch(e => console.error('[Market Tick Loop Error]', e));
-}, 2500);
+  tickCounter++;
+  tickMarket(tickCounter).catch(e => console.error('[Market Tick Loop Error]', e));
+}, 1000);
 
 const app = express();
 app.set('trust proxy', 1);

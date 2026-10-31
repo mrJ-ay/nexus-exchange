@@ -77,11 +77,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     await reloadStocks(true);
     await reloadNews();
 
-    // 2.5초 주기 실시간 시장 시세 및 차트 갱신
+    // 1초 주기 실시간 시장 시세 및 차트 갱신 (초고속 반응)
     setInterval(async () => {
       await reloadStocks(false);
       if (token) await loadUserState(false);
-    }, 2500);
+    }, 1000);
 
     // 15초 주기 뉴스 갱신
     setInterval(reloadNews, 15000);
@@ -235,6 +235,7 @@ function renderStockList() {
       const matchTicker = s.ticker.toLowerCase().includes(search);
       if (!matchName && !matchTicker) return false;
     }
+    if (currentFilter === 'crypto') return s.is_crypto || s.ticker === 'NBTC';
     if (currentFilter === 'user') return !s.is_system;
     if (currentFilter === 'mine') return portfolio.some(h => h.stock_id === s.id);
     return true;
@@ -251,6 +252,7 @@ function renderStockList() {
     const rate = Number(s.change_rate || 0);
     const cls = diff > 0 ? 'up' : (diff < 0 ? 'down' : 'neutral');
     const sign = diff > 0 ? '+' : '';
+    const isCrypto = Boolean(s.is_crypto || s.ticker === 'NBTC');
 
     return `
       <div class="stock-row ${isSelected ? 'selected' : ''}" onclick="selectStock(${s.id})">
@@ -258,7 +260,10 @@ function renderStockList() {
           <span class="row-icon">${s.icon}</span>
           <div class="row-name-box">
             <span class="row-title">${s.name}</span>
-            <span class="row-ticker">${s.ticker}${s.creator_name && !s.is_system ? ` · ${s.creator_name}` : ''}</span>
+            <span class="row-ticker">
+              ${s.ticker}${s.creator_name && !s.is_system ? ` · ${s.creator_name}` : ''}
+              ${isCrypto ? '<span class="badge-crypto-pulse">⚡ 1초 틱</span>' : ''}
+            </span>
           </div>
         </div>
         <div class="row-price ${cls}">${won(s.current_price)}</div>
@@ -275,9 +280,14 @@ function renderSelectedStockHeader(s) {
   $('viewStockName').textContent = s.name;
   $('viewStockTicker').textContent = s.ticker;
 
-  if (s.is_system) {
+  if (s.is_crypto || s.ticker === 'NBTC') {
+    $('viewStockFounder').className = 'stock-founder-badge crypto-badge';
+    $('viewStockFounder').textContent = '🔥 1초 쾌속 틱 · 초고변동 암호화폐 (±8%)';
+  } else if (s.is_system) {
+    $('viewStockFounder').className = 'stock-founder-badge';
     $('viewStockFounder').textContent = '시스템 대장주';
   } else {
+    $('viewStockFounder').className = 'stock-founder-badge';
     $('viewStockFounder').textContent = `👑 창업: ${s.creator_name || '익명'}`;
   }
 
