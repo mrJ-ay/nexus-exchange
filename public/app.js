@@ -237,11 +237,31 @@ async function reloadStocks(isFirst = false) {
     if (isFirst) {
       await loadStockDetail(selectedStockId);
     } else {
-      // 실시간 가격 변동 반영하여 마지막 캔들만 갱신
+      // 실시간 가격 변동 반영하여 캔들 갱신 및 새 봉 롤오버
       updateCurrentCandle(current.current_price);
+      // 10초마다 백엔드 DB와 캔들 히스토리 백그라운드 정밀 동기화 (스크롤 위치 유지)
+      const now = Date.now();
+      if (now - lastCandleSyncTime >= 10000) {
+        lastCandleSyncTime = now;
+        syncCandlesFromServer(selectedStockId);
+      }
     }
   } catch (err) {
     console.error('[Reload Stocks Error]', err);
+  }
+}
+
+let lastCandleSyncTime = 0;
+async function syncCandlesFromServer(stockId) {
+  if (!stockId || isDraggingChart) return;
+  try {
+    const res = await api(`/api/stocks/${stockId}`);
+    if (res.history && res.history.length) {
+      candleHistory = res.history;
+      drawCandleChart();
+    }
+  } catch (err) {
+    // 동기화 실패 시 로컬 캔들 유지
   }
 }
 
@@ -253,6 +273,7 @@ async function loadStockDetail(stockId) {
       selectedStock = res.stock;
       candleHistory = res.history || [];
       chartScrollOffset = 0;
+      lastCandleSyncTime = Date.now();
       if (typeof updateResetBtnVisibility === 'function') updateResetBtnVisibility();
       renderSelectedStockHeader(res.stock);
       renderOrderBook(res.stock);
@@ -546,9 +567,27 @@ function initCanvas() {
 function updateCurrentCandle(currentPrice) {
   if (!candleHistory.length) return;
   const last = candleHistory[candleHistory.length - 1];
-  last.close = currentPrice;
-  last.high = Math.max(last.high, currentPrice);
-  last.low = Math.min(last.low, currentPrice);
+  const isCrypto = Boolean(selectedStock?.is_crypto || selectedStock?.ticker === 'NBTC');
+  const candleInterval = isCrypto ? 15000 : 30000;
+  const now = Date.now();
+  const lastTime = last.at ? new Date(last.at).getTime() : 0;
+
+  // 캔들 주기(코인 15초, 일반주 30초)가 지나면 새 캔들 롤오버 (단일 캔들 무한 비대화 방지)
+  if (lastTime > 0 && (now - lastTime >= candleInterval)) {
+    candleHistory.push({
+      open: currentPrice,
+      high: currentPrice,
+      low: currentPrice,
+      close: currentPrice,
+      volume: 0,
+      at: new Date(now).toISOString()
+    });
+    if (candleHistory.length > 200) candleHistory.shift();
+  } else {
+    last.close = currentPrice;
+    last.high = Math.max(last.high, currentPrice);
+    last.low = Math.min(last.low, currentPrice);
+  }
   drawCandleChart();
 }
 
