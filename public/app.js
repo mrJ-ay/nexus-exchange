@@ -437,21 +437,33 @@ function drawCandleChart() {
   const mainH = plotH - volH;
 
   // 가격 최소/최대 계산
-  let minPrice = Infinity;
-  let maxPrice = -Infinity;
+  let rawMin = Infinity;
+  let rawMax = -Infinity;
   let maxVol = 1;
 
   const count = candleHistory.length;
   candleHistory.forEach(c => {
-    if (c.low < minPrice) minPrice = c.low;
-    if (c.high > maxPrice) maxPrice = c.high;
+    if (c.low < rawMin) rawMin = c.low;
+    if (c.high > rawMax) rawMax = c.high;
     if (c.volume > maxVol) maxVol = c.volume;
   });
 
-  // 여유 마진 5%
-  const priceMargin = Math.max(10, (maxPrice - minPrice) * 0.05);
-  minPrice = Math.max(1, minPrice - priceMargin);
-  maxPrice += priceMargin;
+  // 최소 수직 여유 공간(Headroom): 현재 주가의 최소 12% (상하 ±6%) 폭을 항상 보장
+  // 가격이 1원/1틱만 올라도 화면 위아래로 꽉 차는 현상 완전 방지
+  const curPrice = selectedStock?.current_price || ((rawMin + rawMax) / 2) || 1000;
+  const minHeadroom = Math.max(20, Math.round(curPrice * 0.12));
+  let priceDiff = rawMax - rawMin;
+
+  let minPrice, maxPrice;
+  if (priceDiff < minHeadroom) {
+    const mid = (rawMax + rawMin) / 2;
+    minPrice = Math.max(1, Math.round(mid - minHeadroom / 2));
+    maxPrice = Math.round(mid + minHeadroom / 2);
+  } else {
+    const margin = Math.max(10, Math.round(priceDiff * 0.08));
+    minPrice = Math.max(1, rawMin - margin);
+    maxPrice = rawMax + margin;
+  }
   const priceRange = maxPrice - minPrice || 1;
 
   // 1. 배경 그리드 및 Y축 가격 눈금선
@@ -475,18 +487,25 @@ function drawCandleChart() {
   }
 
   // 2. 캔들스틱 및 볼륨 바 그리기
+  // 캔들이 적을 때 거대해지지 않도록 최대폭(18px)으로 캡하고 우측 정렬 (TradingView / 업비트 방식)
+  const minCandlesScale = 35; // 기본 35개 기준 그리드 슬롯
   const candleGap = 3;
-  const candleWidth = Math.max(2, (plotW / count) - candleGap);
+  const candleSlot = Math.min(18, Math.max(5, plotW / Math.max(count, minCandlesScale)));
+  const candleWidth = Math.max(2, candleSlot - candleGap);
+
+  // 차트 우측 정렬 (캔들이 적으면 우측부터 최신순으로 정렬)
+  const totalChartW = count * candleSlot;
+  const startX = Math.max(0, plotW - totalChartW);
 
   let hoveredCandle = null;
 
   candleHistory.forEach((c, idx) => {
-    const x = idx * (candleWidth + candleGap) + candleWidth / 2;
+    const x = startX + idx * candleSlot + candleWidth / 2;
     const isUp = c.close >= c.open;
     const color = isUp ? '#EF4444' : '#3B82F6';
 
     // 볼륨 바
-    const vBarH = (c.volume / maxVol) * volH;
+    const vBarH = (c.volume / (maxVol || 1)) * volH;
     const vY = plotH - vBarH;
     ctx.fillStyle = isUp ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)';
     ctx.fillRect(x - candleWidth / 2, vY, candleWidth, vBarH);
@@ -512,7 +531,7 @@ function drawCandleChart() {
     ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyH);
 
     // 마우스 호버 검출
-    if (crosshair && Math.abs(crosshair.x - x) <= (candleWidth + candleGap) / 2) {
+    if (crosshair && Math.abs(crosshair.x - x) <= candleSlot / 2) {
       hoveredCandle = { ...c, x, yClose };
     }
   });
