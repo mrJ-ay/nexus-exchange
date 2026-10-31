@@ -4,6 +4,10 @@
    ========================================================= */
 
 const AUTH_KEY = 'NEXUS_TOKEN';
+const PKCE_KEY = 'nx_pkce';
+const redirectUri = () => location.origin + '/';
+const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
 let token = localStorage.getItem(AUTH_KEY);
 let CFG = null;
 let user = null;
@@ -59,11 +63,21 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   try {
     CFG = await api('/api/config');
+
+    // 1. ONEID OAuth PKCE 콜백 처리
+    try {
+      await handleOauthCallback();
+    } catch (authErr) {
+      console.warn('OAuth callback failed:', authErr);
+      toast(authErr.message || 'ONEID 로그인 검증 실패', 'error');
+    }
+
+    // 2. 유저 상태 및 마켓 데이터 로드
     await loadUserState();
     await reloadStocks(true);
     await reloadNews();
 
-    // 2초 주기 실시간 시장 시세 및 차트 갱신
+    // 2.5초 주기 실시간 시장 시세 및 차트 갱신
     setInterval(async () => {
       await reloadStocks(false);
       if (token) await loadUserState(false);
@@ -723,14 +737,76 @@ function closeLoginModal() {
 }
 
 // ---------- ONEID / 게스트 로그인 ----------
-function startOneidLogin() {
+async function startOneidLogin() {
+  if (!CFG) return;
+  localStorage.removeItem(AUTH_KEY);
+
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = b64url(new Uint8Array(digest));
+  const state = b64url(crypto.getRandomValues(new Uint8Array(18)));
+
+  sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
+
+  const oneid = CFG.oneidUrl || 'https://oneid-icvq.onrender.com';
+  const loginUrl = `${oneid}/login.html?` + new URLSearchParams({
+    client_id: CFG.clientId || 'nexus-exchange',
+    redirect_uri: redirectUri(),
+    code_challenge: challenge,
+    state: state,
+  });
+
+  location.assign(loginUrl);
+}
+
+async function handleOauthCallback() {
+  const p = new URLSearchParams(location.search);
+  const code = p.get('code');
+  if (!code) {
+    // 혹시 URL에 token 파라미터로 바로 넘어온 경우도 안전하게 처리
+    const directToken = p.get('token');
+    if (directToken) {
+      token = directToken;
+      localStorage.setItem(AUTH_KEY, token);
+      history.replaceState(null, '', location.pathname);
+      toast('🎉 로그인 완료! 잔고가 연동되었습니다.');
+    }
+    return;
+  }
+
+  const saved = JSON.parse(sessionStorage.getItem(PKCE_KEY) || 'null');
+  sessionStorage.removeItem(PKCE_KEY);
+  history.replaceState(null, '', location.pathname);
+
+  if (!saved || saved.state !== p.get('state')) {
+    throw new Error('로그인 검증(State)에 실패했습니다. 다시 시도해 주세요.');
+  }
+
   const oneid = CFG?.oneidUrl || 'https://oneid-icvq.onrender.com';
-  const redirect = encodeURIComponent(window.location.origin);
-  window.location.href = `${oneid}/login?client_id=${CFG?.clientId || 'nexus-exchange'}&redirect_uri=${redirect}`;
+  const res = await fetch(`${oneid}/api/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: CFG?.clientId || 'nexus-exchange',
+      redirect_uri: redirectUri(),
+      code: code,
+      code_verifier: saved.verifier
+    })
+  });
+
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(d.detail || 'ONEID 로그인 토큰 교환에 실패했습니다.');
+  }
+
+  token = d.access_token;
+  localStorage.setItem(AUTH_KEY, token);
+  closeLoginModal();
+  toast('🎉 ONEID 로그인 성공! 슬롯 머니 및 지갑이 연동되었습니다.');
 }
 
 async function startGuestLogin() {
-  const nickname = $('guestNameInput').value.trim() || '익명의투자자';
+  const nickname = $('guestNameInput').value.trim() || '체험투자자';
   try {
     const res = await api('/api/guest-login', {
       method: 'POST',
@@ -739,7 +815,7 @@ async function startGuestLogin() {
     token = res.token;
     localStorage.setItem(AUTH_KEY, token);
     closeLoginModal();
-    toast(`👋 [${res.user.name}]님 환영합니다! 투자 지원금 지급 완료.`);
+    toast(`👋 [${res.user.name}]님 환영합니다! 체험 지원금이 지급되었습니다.`);
     await loadUserState();
   } catch (err) {
     alert(err.message || '게스트 입장 실패');
@@ -827,13 +903,15 @@ function setupEvents() {
   $('oneidLoginBtn').onclick = startOneidLogin;
   $('guestLoginBtn').onclick = startGuestLogin;
 
-  // URL ONEID 토큰 콜백 처리 (?token=...)
-  const params = new URLSearchParams(window.location.search);
-  const qToken = params.get('token');
-  if (qToken) {
-    token = qToken;
-    localStorage.setItem(AUTH_KEY, token);
-    window.history.replaceState({}, document.title, window.location.pathname);
-    toast('🎉 ONEID 로그인 성공! 잔고가 연동되었습니다.');
+  if ($('tokenPasteBtn')) {
+    $('tokenPasteBtn').onclick = async () => {
+      const paste = $('tokenPasteInput').value.trim();
+      if (!paste) return alert('토큰을 입력해주세요.');
+      token = paste;
+      localStorage.setItem(AUTH_KEY, token);
+      closeLoginModal();
+      await loadUserState(true);
+      toast('토큰이 적용되었습니다.');
+    };
   }
 }

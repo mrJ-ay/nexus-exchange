@@ -348,7 +348,11 @@
         <button class="btn-oneid" id="oneidLoginBtn">
           <span>ONEID로 통합 로그인 (추천)</span>
         </button>
-        <div class="login-divider">또는 체험용 게스트 입장</div>
+        <div class="login-divider">또는 직접 토큰 입력 / 게스트 입장</div>
+        <div class="guest-box" style="margin-bottom:8px;">
+          <input type="text" id="tokenPasteInput" placeholder="ONEID token 직접 붙여넣기" style="flex:1;">
+          <button class="btn-guest" id="tokenPasteBtn" style="background:#00e5ff;color:#000;font-weight:700;">토큰 적용</button>
+        </div>
         <div class="guest-box">
           <input type="text" id="guestNameInput" placeholder="투자자 닉네임 (예: 여의도워렌버핏)" maxlength="12">
           <button class="btn-guest" id="guestLoginBtn">게스트 입장하기</button>
