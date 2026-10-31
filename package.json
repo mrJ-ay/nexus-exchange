@@ -1,0 +1,18 @@
+{
+  "name": "nexus-exchange",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "NEXUS EXCHANGE (넥서스 증권거래소) — 실시간 모의 주식 거래 및 유저 IPO 상장 플랫폼",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.0"
+  }
+}

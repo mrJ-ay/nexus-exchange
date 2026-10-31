@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS EXCHANGE — 넥서스 증권거래소</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Pretendard:wght@400;600;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- 최상단 실시간 증시 시세 전광판 (Marquee) -->
+  <div class="market-ticker-bar">
+    <div class="ticker-label">LIVE TICKER</div>
+    <div class="ticker-track" id="tickerTrack">
+      <span class="ticker-item">시세를 불러오는 중...</span>
+    </div>
+  </div>
+
+  <!-- 메인 헤더 -->
+  <header class="navbar">
+    <div class="nav-left">
+      <div class="brand">
+        <span class="brand-logo">🏛️</span>
+        <div class="brand-text">
+          <h1>NEXUS <span class="brand-sub">EXCHANGE</span></h1>
+          <span class="brand-tag">GLOBAL FINANCIAL HUB</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-center">
+      <div class="breaking-news-pill" id="breakingNewsPill">
+        <span class="news-badge">속보</span>
+        <span class="news-text" id="breakingNewsText">증권거래소 정식 오픈! 누구나 자본금을 모아 기업을 상장시킬 수 있습니다.</span>
+      </div>
+    </div>
+
+    <div class="nav-right">
+      <button class="btn-ipo" id="openIpoBtn">
+        <span class="btn-icon">🏛️</span>
+        <span>기업 상장 (IPO)</span>
+        <span class="badge-fee">50만칩</span>
+      </button>
+
+      <a class="nav-link-btn slot-link" href="https://vegas-slots-2izy.onrender.com" target="_blank" rel="noopener">
+        <span>🎰 베가스 슬롯</span>
+      </a>
+
+      <a class="nav-link-btn jarket-link" href="https://jarket.onrender.com" target="_blank" rel="noopener">
+        <span>🛒 자켓마트</span>
+      </a>
+
+      <div class="user-chip" id="userChip">
+        <div class="balance-wrap">
+          <span class="balance-label">투자 가능 잔고</span>
+          <span class="balance-val" id="myBalanceDisplay">$0</span>
+        </div>
+        <button class="btn-auth" id="authBtn">로그인</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 트레이딩 워크스페이스 -->
+  <main class="trading-layout">
+    <!-- 좌측: 종목 목록 패널 -->
+    <aside class="stock-list-panel">
+      <div class="panel-header">
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-filter="all" id="tabAllStocks">전체 종목</button>
+          <button class="tab-btn" data-filter="user" id="tabUserStocks">👑 유저 상장주</button>
+          <button class="tab-btn" data-filter="mine" id="tabMyStocks">내 보유</button>
+        </div>
+        <input type="text" class="stock-search" id="stockSearchInput" placeholder="종목명/티커 검색...">
+      </div>
+
+      <div class="stock-table-header">
+        <span>종목</span>
+        <span class="col-price">현재가</span>
+        <span class="col-change">등락률</span>
+      </div>
+
+      <div class="stock-list" id="stockList">
+        <!-- JS 동적 생성 -->
+      </div>
+    </aside>
+
+    <!-- 중앙: 차트 및 종목 상세 -->
+    <section class="chart-panel">
+      <!-- 선택된 종목 헤더 정보 -->
+      <div class="selected-stock-header" id="selectedStockHeader">
+        <div class="stock-info-left">
+          <span class="stock-icon-large" id="viewStockIcon">🛒</span>
+          <div>
+            <div class="stock-title-wrap">
+              <h2 id="viewStockName">(주)자켓홀딩스</h2>
+              <span class="stock-ticker-badge" id="viewStockTicker">JARKET</span>
+              <span class="stock-founder-badge" id="viewStockFounder">시스템 대장주</span>
+            </div>
+            <p class="stock-desc" id="viewStockDesc">대한민국 유통과 카지노의 중심, 자켓마트 지주회사</p>
+          </div>
+        </div>
+
+        <div class="stock-info-right">
+          <div class="price-display-wrap">
+            <div class="price-large" id="viewStockPrice">$10,000</div>
+            <div class="price-change-wrap">
+              <span class="change-amount" id="viewChangeAmount">▲ +$250</span>
+              <span class="change-rate" id="viewChangeRate">(+2.50%)</span>
+            </div>
+          </div>
+          <div class="stock-stats-grid">
+            <div class="stat-item">
+              <span class="stat-label">고가</span>
+              <span class="stat-val up" id="viewHighPrice">$10,200</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">저가</span>
+              <span class="stat-val down" id="viewLowPrice">$9,800</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">거래량</span>
+              <span class="stat-val" id="viewVolume">14,200주</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">발행주식</span>
+              <span class="stat-val" id="viewTotalShares">1,000,000주</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 인터랙티브 캔들 차트 캔버스 -->
+      <div class="chart-canvas-container">
+        <div class="chart-toolbar">
+          <span class="chart-title">📈 1분봉 실시간 캔들 차트</span>
+          <div class="chart-time-badge">2.5초 틱 자동 갱신 중 ●</div>
+        </div>
+        <canvas id="candleChart" width="800" height="380"></canvas>
+      </div>
+
+      <!-- 하단: 내 포트폴리오 & 공시 뉴스 탭 -->
+      <div class="bottom-tab-section">
+        <div class="bottom-tab-header">
+          <button class="b-tab-btn active" id="bTabPortfolio">📊 내 보유 주식 포트폴리오 (<span id="portfolioCount">0</span>)</button>
+          <button class="b-tab-btn" id="bTabNews">📢 NEXUS 공시 & 속보 피드</button>
+        </div>
+
+        <!-- 탭 1: 포트폴리오 -->
+        <div class="b-tab-content active" id="portfolioView">
+          <div class="portfolio-summary-bar">
+            <div>총 매수금액: <strong id="sumInvested">$0</strong></div>
+            <div>총 평가금액: <strong id="sumEval">$0</strong></div>
+            <div>평가손익: <strong id="sumProfit" class="neutral">$0 (0.00%)</strong></div>
+          </div>
+          <div class="portfolio-table-wrap">
+            <table class="portfolio-table">
+              <thead>
+                <tr>
+                  <th>종목</th>
+                  <th>보유수량</th>
+                  <th>매수평단</th>
+                  <th>현재가</th>
+                  <th>평가금액</th>
+                  <th>평가손익</th>
+                  <th>수익률</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody id="portfolioTableBody">
+                <tr><td colspan="8" class="empty-cell">보유 중인 주식이 없습니다. 좌측에서 종목을 선택해 투자해 보세요!</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 탭 2: 공시 피드 -->
+        <div class="b-tab-content" id="newsView" style="display:none;">
+          <div class="news-feed-list" id="newsFeedList">
+            <!-- JS 동적 생성 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 우측: 호가창 및 주문창 -->
+    <aside class="order-panel">
+      <!-- 호가창 -->
+      <div class="orderbook-wrap">
+        <div class="orderbook-header">
+          <span>호가창</span>
+          <span class="orderbook-unit">수량(주)</span>
+        </div>
+        <div class="orderbook-asks" id="orderbookAsks">
+          <!-- 매도 호가 (파란색) -->
+        </div>
+        <div class="orderbook-center" id="orderbookCenter">
+          <span class="ob-price" id="obCurrentPrice">$10,000</span>
+          <span class="ob-rate" id="obCurrentRate">+2.50%</span>
+        </div>
+        <div class="orderbook-bids" id="orderbookBids">
+          <!-- 매수 호가 (빨간색) -->
+        </div>
+      </div>
+
+      <!-- 주문창 (매수 / 매도) -->
+      <div class="trade-box">
+        <div class="trade-tabs">
+          <button class="trade-tab-btn active buy" id="tabBuy">매수</button>
+          <button class="trade-tab-btn sell" id="tabSell">매도</button>
+        </div>
+
+        <div class="trade-form">
+          <div class="trade-row">
+            <span class="trade-label">주문 구분</span>
+            <span class="trade-type-pill">시장가 즉시 체결</span>
+          </div>
+
+          <div class="trade-row">
+            <span class="trade-label">주문 단가</span>
+            <span class="trade-price-display" id="orderPriceDisplay">$10,000</span>
+          </div>
+
+          <div class="trade-input-row">
+            <label class="trade-label" for="orderSharesInput">주문 수량</label>
+            <div class="input-unit-wrap">
+              <input type="number" id="orderSharesInput" min="1" step="1" value="1" placeholder="수량 입력">
+              <span class="unit-text">주</span>
+            </div>
+          </div>
+
+          <div class="quick-pct-btns">
+            <button class="btn-pct" data-pct="0.25">25%</button>
+            <button class="btn-pct" data-pct="0.50">50%</button>
+            <button class="btn-pct" data-pct="0.75">75%</button>
+            <button class="btn-pct" data-pct="1.00" id="btnMaxOrder">최대</button>
+          </div>
+
+          <div class="trade-calc-box">
+            <div class="calc-row">
+              <span id="calcLabel">총 결제 금액</span>
+              <strong id="calcTotalAmount">$10,000</strong>
+            </div>
+            <div class="calc-sub" id="calcSubInfo">주문 가능 잔고: $0</div>
+          </div>
+
+          <button class="btn-submit-order buy" id="submitOrderBtn">
+            매수하기 (풀매수)
+          </button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- =========================================================
+       모달: 신규 기업 공개 / 주식 상장 (IPO)
+       ========================================================= -->
+  <div class="modal-backdrop" id="ipoBackdrop">
+    <div class="ipo-modal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3>🏛️ 신규 주식 상장 (IPO) 신청</h3>
+          <p>자본금을 납부하고 나만의 주식회사를 거래소에 공식 상장시킵니다!</p>
+        </div>
+        <button class="modal-close-btn" id="closeIpoBtn">✕</button>
+      </div>
+
+      <div class="ipo-body">
+        <div class="ipo-benefit-card">
+          <div class="benefit-badge">회장님의 특권</div>
+          <h4>👑 상장 즉시 창업자 지분 30% 무상 지급!</h4>
+          <p>총 발행 주식의 30%를 대주주 지분으로 즉시 획득하며, 나머지 70%는 공모 시장에 풀려 전 유저가 매수합니다.</p>
+        </div>
+
+        <form id="ipoForm" onsubmit="return false;">
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="ipoName">회사명 (종목명) *</label>
+              <input type="text" id="ipoName" placeholder="예: (주)재이 인베스트먼트" maxlength="25" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="ipoTicker">종목 코드 (티커) *</label>
+              <input type="text" id="ipoTicker" placeholder="예: JAE" maxlength="6" style="text-transform:uppercase;" required>
+            </div>
+            <div class="form-group flex-half">
+              <label for="ipoIcon">로고 *</label>
+              <input type="text" id="ipoIcon" value="🚀" maxlength="4" style="text-align:center;">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="ipoPrice">희망 공모가 (1주당 칩) *</label>
+              <input type="number" id="ipoPrice" value="5000" min="100" max="500000" step="100" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="ipoShares">총 발행 주식 수 *</label>
+              <input type="number" id="ipoShares" value="100000" min="10000" max="5000000" step="10000" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="ipoDesc">사업 개요 & 주주들에게 한마디</label>
+            <textarea id="ipoDesc" rows="2" placeholder="화성 갈끄니까 믿고 타라! 분기별 20% 배당 보장!"></textarea>
+          </div>
+
+          <!-- 계산 미리보기 -->
+          <div class="ipo-summary-box">
+            <div class="sum-row">
+              <span>예상 시가총액:</span>
+              <strong id="previewMarketCap">$500,000,000</strong>
+            </div>
+            <div class="sum-row">
+              <span>내 창업자 보유 주식 (30%):</span>
+              <strong id="previewFounderShares" style="color:var(--gold);">30,000주 ($150,000,000 상당)</strong>
+            </div>
+            <div class="sum-row highlight">
+              <span>상장 심사 자본금:</span>
+              <strong style="color:var(--neon-cyan);">$500,000</strong>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-cancel" id="cancelIpoBtn">취소</button>
+            <button type="submit" class="btn-primary-ipo" id="submitIpoBtn">
+              🏛️ 50만 칩 납부하고 거래소 상장하기
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       모달: ONEID / 게스트 로그인
+       ========================================================= -->
+  <div class="modal-backdrop" id="loginBackdrop">
+    <div class="login-modal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3>🔑 NEXUS 계정 로그인</h3>
+          <p>베가스 슬롯 및 자켓마트와 잔고가 100% 실시간 연동됩니다.</p>
+        </div>
+        <button class="modal-close-btn" id="closeLoginBtn">✕</button>
+      </div>
+      <div class="login-body">
+        <button class="btn-oneid" id="oneidLoginBtn">
+          <span>ONEID로 통합 로그인 (추천)</span>
+        </button>
+        <div class="login-divider">또는 체험용 게스트 입장</div>
+        <div class="guest-box">
+          <input type="text" id="guestNameInput" placeholder="투자자 닉네임 (예: 여의도워렌버핏)" maxlength="12">
+          <button class="btn-guest" id="guestLoginBtn">게스트 입장하기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 컨테이너 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
